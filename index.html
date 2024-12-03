@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaction Capture</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ccc;
+            margin-top: 20px;
+        }
+        button, input {
+            padding: 10px;
+            font-size: 16px;
+            margin: 10px;
+        }
+        input {
+            width: 60%;
+        }
+        pre {
+            text-align: left;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h1>Interaction Capture Service</h1>
+    <input id="urlInput" type="text" placeholder="Enter webpage URL (e.g., https://example.com)" />
+    <button id="startCapture">Start Capture</button>
+    <button id="stopCapture" disabled>Stop Capture</button>
+    <div id="iframeContainer"></div>
+    <pre id="jsonOutput" style="display: none;"></pre>
+
+    <script>
+        const startButton = document.getElementById('startCapture');
+        const stopButton = document.getElementById('stopCapture');
+        const urlInput = document.getElementById('urlInput');
+        const iframeContainer = document.getElementById('iframeContainer');
+        const jsonOutput = document.getElementById('jsonOutput');
+
+        let interactions = []; // Store captured interactions
+        let iframeWindow = null; // Reference to the iframe window
+        let iframeOrigin = ''; // Origin of the loaded iframe
+
+        // Start capturing interactions
+        startButton.addEventListener('click', () => {
+            const url = urlInput.value.trim();
+            if (!url) {
+                alert('Please enter a valid URL.');
+                return;
+            }
+
+            // Create an iframe and load the target URL
+            iframeContainer.innerHTML = `<iframe id="targetIframe" src="${url}" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>`;
+            const iframe = document.getElementById('targetIframe');
+            iframeOrigin = new URL(url).origin;
+
+            iframe.onload = () => {
+                iframeWindow = iframe.contentWindow;
+                console.log('Iframe loaded successfully.');
+
+                // If same-origin, inject listener into iframe
+                try {
+                    const iframeDocument = iframe.contentDocument || iframeWindow.document;
+                    iframeDocument.addEventListener('click', captureInteraction);
+                    iframeDocument.addEventListener('input', captureInteraction);
+                } catch (error) {
+                    console.warn('Cross-origin iframe detected. Using limited tracking.');
+                }
+
+                stopButton.disabled = false;
+                startButton.disabled = true;
+            };
+        });
+
+        // Stop capturing interactions
+        stopButton.addEventListener('click', () => {
+            jsonOutput.style.display = 'block';
+            jsonOutput.textContent = JSON.stringify(interactions, null, 2);
+            stopButton.disabled = true;
+            startButton.disabled = false;
+        });
+
+        // Capture interaction events
+        function captureInteraction(event) {
+            const element = event.target;
+            const action = {
+                type: event.type,
+                tagName: element.tagName,
+                id: element.id,
+                className: element.className,
+                name: element.getAttribute('name'),
+                value: element.value || null,
+                textContent: element.textContent.trim() || null,
+                timestamp: new Date().toISOString(),
+            };
+            interactions.push(action);
+            console.log('Captured Interaction:', action);
+        }
+
+        // Listen for postMessage from iframe (if cross-origin)
+        window.addEventListener('message', (event) => {
+            if (event.origin !== iframeOrigin) return; // Ensure it's from the iframe's origin
+            if (event.data.type === 'interaction') {
+                interactions.push(event.data.action);
+                console.log('Captured Interaction via postMessage:', event.data.action);
+            }
+        });
+    </script>
+</body>
+</html>
